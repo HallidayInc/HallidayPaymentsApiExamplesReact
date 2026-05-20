@@ -6,7 +6,7 @@ const HALLIDAY_API_KEY = import.meta.env.VITE_HALLIDAY_API_KEY
 const FROM_CHAIN_ID = '0x2105' // Base mainnet
 const INPUT_TOKEN = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' // USDC on Base
 const INPUT_ASSET = 'base:' + INPUT_TOKEN
-const OUTPUT_ASSET = 'story:0x'
+const OUTPUT_ASSET = 'megaeth:0x28b7e77f82b25b95953825f1e3ea0e36c1c29861'
 const ERC20_ABI = [
   'function balanceOf(address) view returns (uint256)',
   'function decimals() view returns (uint8)',
@@ -222,7 +222,7 @@ export default function Swap() {
           <div className="output-amount">{outputAmount > 0 ? outputAmount.toFixed(6) : '-'}</div>
           <div className="output-usd">{quote.price ? `$${quote.price} per token` : '$-'}</div>
           <div className="output-currency">
-            IP <img src="https://coin-images.coingecko.com/coins/images/54035/large/Transparent_bg.png?1738075331" alt="IP" className="token-icon" />
+            MEGA <img src="https://coin-images.coingecko.com/coins/images/69995/large/ICON.png?1760337992" alt="MEGA" className="token-icon" />
           </div>
         </div>
       </div>

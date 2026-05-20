@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 
 const HALLIDAY_API_KEY = import.meta.env.VITE_HALLIDAY_API_KEY
 const INPUT_ASSET = 'usd'
-const OUTPUT_ASSET = 'story:0x'
+const OUTPUT_ASSET = 'megaeth:0x28b7e77f82b25b95953825f1e3ea0e36c1c29861'
 const ONRAMPS = ['stripe', 'transak', 'moonpay']
 
 export default function Onramp() {
@@ -113,7 +113,7 @@ export default function Onramp() {
   return (
     <div className="container">
       <Link to="/" className="back-button">←</Link>
-      <h2 className="text-center">Onramp to IP</h2>
+      <h2 className="text-center">Onramp to MEGA</h2>
 
       <div className="radio-group">
         {ONRAMPS.map((onramp) => (
@@ -156,19 +156,19 @@ export default function Onramp() {
             {currentQuote.price ? (
               <>
                 ${currentQuote.price} per token, Total fees ${currentQuote.fees}.<br />
-                IP price ${currentQuote.aggPrice}.
+                MEGA price ${currentQuote.aggPrice}.
               </>
             ) : '$-'}
           </div>
           <div className="output-currency">
-            IP <img src="https://coin-images.coingecko.com/coins/images/54035/large/Transparent_bg.png?1738075331" alt="IP" className="token-icon" />
+            MEGA <img src="https://coin-images.coingecko.com/coins/images/69995/large/ICON.png?1760337992" alt="MEGA" className="token-icon" />
           </div>
         </div>
       </div>
 
       <div className="confirm-content">
         <div className="input-label">
-          Wallet address to onramp $IP to on Story. This wallet address will own the payment, <a href="https://docs.halliday.xyz/pages/otw" target="_blank" rel="noreferrer">learn more here</a>.
+          Wallet address to onramp MEGA to on MegaETH. This wallet address will own the payment, <a href="https://docs.halliday.xyz/pages/otw" target="_blank" rel="noreferrer">learn more here</a>.
         </div>
         <input
           className="address-input"
