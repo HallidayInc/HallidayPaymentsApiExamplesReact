@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
+import { ethers } from 'ethers'
 
 const HALLIDAY_API_KEY = import.meta.env.VITE_HALLIDAY_API_KEY
 const INPUT_ASSET = 'usd'
@@ -91,12 +92,65 @@ export default function Onramp() {
     }, 2000)
   }
 
+  async function handleVerification(confirmResult) {
+    const provider = new ethers.BrowserProvider(window.ethereum)
+    const signer = await provider.getSigner()
+
+    const { verification_token, verifications } = confirmResult.next_instruction
+
+    const signatures = await Promise.all(
+      verifications.map(async (v) => {
+        let signature
+        if (v.signature_type === 'EIP712') {
+          const typedData = JSON.parse(v.payload)
+          const { EIP712Domain, ...types } = typedData.types
+          signature = await signer.signTypedData(typedData.domain, types, typedData.message)
+        } else {
+          signature = await signer.signMessage(v.payload)
+        }
+        return { reason: v.reason, signature_type: v.signature_type, signature }
+      })
+    )
+
+    const verifyRes = await fetch('https://v2.prod.halliday.xyz/payments/confirm', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + HALLIDAY_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ verification_token, signatures })
+    })
+
+    if (verifyRes.status === 409) return confirmResult
+    if (verifyRes.status === 400) throw new Error('Quote expired. Please try again.')
+    if (verifyRes.status === 401) throw new Error('Signature verification failed. Please try again.')
+
+    return verifyRes.json()
+  }
+
   async function handleContinue() {
     if (!isEnabled) return
     setLoading(true)
-    const accepted = await acceptQuote()
-    setIframeUrl(accepted.next_instruction.funding_page_url)
-    setScreen('onramp')
+
+    try {
+      let confirmResult = await acceptQuote()
+
+      // Handle USER_VERIFY loop (owner verify >= $300, withdrawal sim >= $1M)
+      while (confirmResult.next_instruction?.type === 'USER_VERIFY') {
+        if (!window.ethereum) {
+          alert('Wallet required to sign verification. Install MetaMask.')
+          setLoading(false)
+          return
+        }
+        confirmResult = await handleVerification(confirmResult)
+      }
+
+      setIframeUrl(confirmResult.next_instruction.funding_page_url)
+      setScreen('onramp')
+    } catch (err) {
+      alert(err.message)
+    }
+
     setLoading(false)
   }
 

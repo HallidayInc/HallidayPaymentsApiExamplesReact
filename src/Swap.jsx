@@ -119,27 +119,75 @@ export default function Swap() {
     }, 2000)
   }
 
+  async function handleVerification(confirmResult) {
+    const provider = new ethers.BrowserProvider(window.ethereum)
+    const signer = await provider.getSigner()
+
+    const { verification_token, verifications } = confirmResult.next_instruction
+
+    const signatures = await Promise.all(
+      verifications.map(async (v) => {
+        let signature
+        if (v.signature_type === 'EIP712') {
+          const typedData = JSON.parse(v.payload)
+          const { EIP712Domain, ...types } = typedData.types
+          signature = await signer.signTypedData(typedData.domain, types, typedData.message)
+        } else {
+          signature = await signer.signMessage(v.payload)
+        }
+        return { reason: v.reason, signature_type: v.signature_type, signature }
+      })
+    )
+
+    const verifyRes = await fetch('https://v2.prod.halliday.xyz/payments/confirm', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + HALLIDAY_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ verification_token, signatures })
+    })
+
+    if (verifyRes.status === 409) return confirmResult
+    if (verifyRes.status === 400) throw new Error('Quote expired. Please try again.')
+    if (verifyRes.status === 401) throw new Error('Signature verification failed. Please try again.')
+
+    return verifyRes.json()
+  }
+
   async function handleContinue() {
     if (!isEnabled) return
     setLoading(true)
-    const data = await acceptQuote()
-    setSwapData(data)
-    setScreen('swap')
 
-    intervalRef.current = setInterval(async () => {
-      const status = await getStatus(data.payment_id)
-      setSwapStatus(status)
-    }, 5000)
+    try {
+      let data = await acceptQuote()
 
-    // Fund the swap
-    const fundAmount = data.quoted.route[0].net_effect.consume[0].amount
-    const fundAddress = data.processing_addresses[0].address
-    const provider = new ethers.BrowserProvider(window.ethereum)
-    const signer = await provider.getSigner()
-    const contract = new ethers.Contract(INPUT_TOKEN, ERC20_ABI, signer)
-    const decimals = await contract.decimals()
-    const tx = await contract.transfer(fundAddress, ethers.parseUnits(fundAmount, decimals))
-    await tx.wait()
+      // Handle USER_VERIFY loop (owner verify >= $300, withdrawal sim >= $1M)
+      while (data?.next_instruction?.type === 'USER_VERIFY') {
+        data = await handleVerification(data)
+      }
+
+      setSwapData(data)
+      setScreen('swap')
+
+      intervalRef.current = setInterval(async () => {
+        const status = await getStatus(data.payment_id)
+        setSwapStatus(status)
+      }, 5000)
+
+      // Fund the swap
+      const fundAmount = data.quoted.route[0].net_effect.consume[0].amount
+      const fundAddress = data.processing_addresses[0].address
+      const provider = new ethers.BrowserProvider(window.ethereum)
+      const signer = await provider.getSigner()
+      const contract = new ethers.Contract(INPUT_TOKEN, ERC20_ABI, signer)
+      const decimals = await contract.decimals()
+      const tx = await contract.transfer(fundAddress, ethers.parseUnits(fundAmount, decimals))
+      await tx.wait()
+    } catch (err) {
+      alert(err.message)
+    }
+
     setLoading(false)
   }
 
