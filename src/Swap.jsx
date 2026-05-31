@@ -109,10 +109,14 @@ export default function Swap() {
     const value = e.target.value
     if (!/^[0-9]*\.?[0-9]*$/.test(value)) return
     setAmount(value)
-    if (!value || value === '0') return
+    clearTimeout(timeoutRef.current)
+    if (!value || value === '0') {
+      setQuote({})
+      setLoading(false)
+      return
+    }
 
     setLoading(true)
-    clearTimeout(timeoutRef.current)
     timeoutRef.current = setTimeout(async () => {
       await getQuote(value)
       setLoading(false)
