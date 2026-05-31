@@ -82,10 +82,14 @@ export default function Onramp() {
     const value = e.target.value
     if (!/^[0-9]*\.?[0-9]*$/.test(value)) return
     setPayAmount(value)
-    if (!value || value === '0') return
+    clearTimeout(timeoutRef.current)
+    if (!value || value === '0') {
+      setQuotes({})
+      setLoading(false)
+      return
+    }
 
     setLoading(true)
-    clearTimeout(timeoutRef.current)
     timeoutRef.current = setTimeout(async () => {
       await getQuote(value)
       setLoading(false)
