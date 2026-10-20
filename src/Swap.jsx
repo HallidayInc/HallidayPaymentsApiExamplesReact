@@ -25,12 +25,6 @@ export default function Swap() {
   const timeoutRef = useRef(null)
   const intervalRef = useRef(null)
 
-  useEffect(() => {
-    if (!HALLIDAY_API_KEY) alert('VITE_HALLIDAY_API_KEY is missing in .env!')
-    checkExistingConnection()
-    return () => clearInterval(intervalRef.current)
-  }, [])
-
   async function checkExistingConnection() {
     if (!window.ethereum) return
     const accounts = await window.ethereum.request({ method: 'eth_accounts' })
@@ -50,6 +44,13 @@ export default function Swap() {
     const [bal, decimals] = await Promise.all([contract.balanceOf(address), contract.decimals()])
     setBalance(ethers.formatUnits(bal, decimals))
   }
+
+  useEffect(() => {
+    if (!HALLIDAY_API_KEY) alert('VITE_HALLIDAY_API_KEY is missing in .env!')
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- setState only runs after awaits
+    checkExistingConnection()
+    return () => clearInterval(intervalRef.current)
+  }, [])
 
   async function connectWallet() {
     if (!window.ethereum) return alert('No wallet found. Install MetaMask.')

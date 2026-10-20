@@ -3,6 +3,18 @@ import { Link } from 'react-router-dom'
 import { ethers } from 'ethers'
 
 const HALLIDAY_API_KEY = import.meta.env.VITE_HALLIDAY_API_KEY
+const API_URL = 'https://v2.prod.halliday.xyz'
+
+async function api(path, body) {
+  const res = await fetch(API_URL + path, {
+    method: body ? 'POST' : 'GET',
+    headers: { 'Authorization': 'Bearer ' + HALLIDAY_API_KEY, 'Content-Type': 'application/json' },
+    body: body && JSON.stringify(body)
+  })
+  const data = await res.json()
+  if (!res.ok || data.errors) throw new Error(JSON.stringify(data.errors || data))
+  return data
+}
 
 export default function Withdraw() {
   const [screen, setScreen] = useState('selection')
@@ -15,19 +27,10 @@ export default function Withdraw() {
   const [chains, setChains] = useState({})
   const [txHashes, setTxHashes] = useState({})
 
-  useEffect(() => {
-    if (!HALLIDAY_API_KEY) alert('VITE_HALLIDAY_API_KEY is missing in .env!')
-    loadMetadata()
-    checkExistingConnection()
-  }, [])
-
   async function loadMetadata() {
-    const [assetsRes, chainsRes] = await Promise.all([
-      fetch('https://v2.prod.halliday.xyz/assets', { headers: { 'Authorization': 'Bearer ' + HALLIDAY_API_KEY } }),
-      fetch('https://v2.prod.halliday.xyz/chains', { headers: { 'Authorization': 'Bearer ' + HALLIDAY_API_KEY } })
-    ])
-    setAssets(await assetsRes.json())
-    setChains(await chainsRes.json())
+    const [assetsData, chainsData] = await Promise.all([api('/assets'), api('/chains')])
+    setAssets(assetsData)
+    setChains(chainsData)
   }
 
   async function checkExistingConnection() {
@@ -38,6 +41,12 @@ export default function Withdraw() {
       await loadPayments(accounts[0])
     }
   }
+
+  useEffect(() => {
+    if (!HALLIDAY_API_KEY) alert('VITE_HALLIDAY_API_KEY is missing in .env!')
+    loadMetadata().catch((err) => alert(err.message))
+    checkExistingConnection()
+  }, [])
 
   async function connectWallet() {
     if (!window.ethereum) return alert('No wallet found. Install MetaMask.')
@@ -54,59 +63,51 @@ export default function Withdraw() {
 
   async function loadPayments(address) {
     setLoading(true)
-    const res = await fetch(`https://v2.prod.halliday.xyz/payments/history?category=ALL&owner_address=${address}`, {
-      headers: { 'Authorization': 'Bearer ' + HALLIDAY_API_KEY }
-    })
-    const data = await res.json()
-    const incomplete = []
+    try {
+      const data = await api(`/payments/history?categories[]=ALL&owner_address=${address}&limit=500`)
+      const incomplete = []
 
-    for (const payment of data.payment_statuses?.slice(0, 10) || []) {
-      if (payment.status === 'COMPLETE') continue
-      const balRes = await fetch('https://v2.prod.halliday.xyz/payments/balances', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + HALLIDAY_API_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payment_id: payment.payment_id })
-      })
-      const balData = await balRes.json()
-      const stuck = balData.balance_results?.reduce((sum, b) => sum + +b.value.amount, 0) || 0
-      if (stuck > 0) {
-        incomplete.push({ ...payment, balances: balData, stuck })
+      for (const payment of data.payment_statuses?.slice(0, 15) || []) {
+        if (payment.status === 'COMPLETE') continue
+        const balData = await api('/payments/balances', {
+          query: { source: 'OWNER', owner: address, scope: { kind: 'PAYMENT', payment_id: payment.payment_id } }
+        })
+        const stuck = balData.balance_results?.reduce((sum, b) => sum + +b.value.amount, 0) || 0
+        if (stuck > 0) {
+          incomplete.push({ ...payment, balances: balData, stuck })
+        }
       }
+      setPayments(incomplete)
+    } catch (err) {
+      alert(err.message)
     }
-    setPayments(incomplete)
     setLoading(false)
   }
 
-  async function handleWithdraw(balance, paymentId) {
-    const res = await fetch('https://v2.prod.halliday.xyz/payments/withdraw', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + HALLIDAY_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        payment_id: paymentId,
+  async function handleWithdraw(balance) {
+    try {
+      const typedData = await api('/payments/withdraw', {
+        withdraw_from: balance.withdraw_from,
         token_amounts: [{ token: balance.token, amount: balance.value.amount }],
         recipient_address: userAddress
       })
-    })
-    const typedData = await res.json()
-    const { domain, types, message } = JSON.parse(typedData.withdraw_authorization)
-    delete types.EIP712Domain
+      const { domain, types, message } = JSON.parse(typedData.withdraw_authorization)
+      delete types.EIP712Domain
 
-    const provider = new ethers.BrowserProvider(window.ethereum)
-    const signer = await provider.getSigner()
-    const signature = await signer.signTypedData(domain, types, message)
+      const provider = new ethers.BrowserProvider(window.ethereum)
+      const signer = await provider.getSigner()
+      const signature = await signer.signTypedData(domain, types, message)
 
-    const confirmRes = await fetch('https://v2.prod.halliday.xyz/payments/withdraw/confirm', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + HALLIDAY_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        payment_id: paymentId,
-        token_amounts: [{ token: balance.token, amount: balance.value.amount }],
-        recipient_address: userAddress,
-        owner_signature: signature
-      })
-    })
-    const { transaction_hash } = await confirmRes.json()
-    setTxHashes((prev) => ({ ...prev, [balance.token]: transaction_hash }))
+      let withdrawal = await api('/payments/withdraw/confirm', { signature, state_token: typedData.state_token })
+      while (withdrawal.status === 'PENDING') {
+        await new Promise((resolve) => setTimeout(resolve, 5000))
+        withdrawal = await api(`/payments/withdraw/status?withdraw_id=${withdrawal.withdraw_id}`)
+      }
+      if (withdrawal.status !== 'SUCCESS') throw new Error('Withdrawal did not succeed: ' + JSON.stringify(withdrawal))
+      setTxHashes((prev) => ({ ...prev, [balance.token]: withdrawal.transaction_hash }))
+    } catch (err) {
+      alert(err.message)
+    }
   }
 
   function getPaymentInfo(payment) {
@@ -148,7 +149,7 @@ export default function Withdraw() {
                 </div>
                 <button
                   className="small-button"
-                  onClick={() => handleWithdraw(balance, selectedPayment.payment_id)}
+                  onClick={() => handleWithdraw(balance)}
                   disabled={!!txHash}
                 >
                   Sign & Submit Withdrawal

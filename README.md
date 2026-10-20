@@ -1,10 +1,10 @@
 # Halliday API Examples with React
 
-Halliday Payments API integration examples using React. This project uses the Vite React template. The Halliday API is accessed over HTTP directly without using the SDK. Swaps, retries, and withdrawals can be done by connecting an EIP-1193 wallet like MetaMask or Rabby. Ethers.js 6 is used with the Privy React SDK.
+Halliday Payments API integration examples using React. This project uses the Vite React template. The Halliday API is accessed over HTTP directly without using the SDK. Swaps, retries, and withdrawals can be done by connecting an EIP-1193 wallet like MetaMask or Rabby. Ethers.js 6 is used for wallet interactions.
 
 ### Keys
 
-Get a Halliday API key: https://halliday.xyz/contact
+Get a Halliday API key from the Halliday Dashboard: https://dashboard.halliday.xyz
 
 ### Run
 
